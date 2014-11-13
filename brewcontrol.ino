@@ -34,11 +34,28 @@ void initPinModes(){
   pinMode(BOIL_ENABLE, INPUT);
 }
 
-//END DECLARATIONS
+//END PIN DECLARATIONS
 
 //VARIABLES
 //Used to translate real numbers into 7 segment bytes
 byte segmentCounter[10];
+
+/*The minimum and maximum values that the pots used for controling temperature
+set points will return
+*/
+int MIN_POT_VALUE = 0;
+int MAX_POT_VALUE = 1023;
+
+/*The minimum and maximum settable temperatures for the mash tun*/
+int MASH_TUN_MINIMUM = 60;
+int MASH_TUN_MAXIMUM = 170;
+
+/*The minimum and maximum settable temperatures for the boil kettle*/
+int BOIL_KETTLE_MINIMUM = 50;
+int BOIL_KETTLE_MAXIMUM = 212;
+
+//The byte value for --- on a 3 digit 7 segment display
+byte noValue = 64; //Just segment 6 1000000
 
 //Temperature of the mash tun
 int mashTemp;
@@ -101,19 +118,26 @@ by the user
 void displaySetTemps(){
    //check mash temp enabled
   if(checkTempSet(MASH_ENABLE) == 1){
-    
+    displayTemp(MASH_TUN_MINIMUM, MASH_TUN_MAXIMUM, MASH_POT, TEMP_SET_LATCH, MASH_SET_DATA, MASH_SET_CLOCK);
   } else {
-    
+    displayTemp(-1, -1, -1, TEMP_SET_LATCH, MASH_SET_DATA, MASH_SET_CLOCK);
   }
   //Check boil temp enabled
   if(checkTempSet(BOIL_ENABLE) == 1){
-    
+    displayTemp(BOIL_KETTLE_MINIMUM, BOIL_KETTLE_MAXIMUM, BOIL_POT, TEMP_SET_LATCH, BOIL_SET_DATA, BOIL_SET_CLOCK);
   } else {
-    
+    displayTemp(-1, -1, -1, TEMP_SET_LATCH, BOIL_SET_DATA, BOIL_SET_CLOCK);
   }
 }
 
 // 7-Segment Display Functions
+
+/**
+toTrans - an integeger from 0-999 to display
+latchPin - the latch pin corresponding to the shift register array that you want to display on
+dataPin the dataPin to feed bits to
+clockPin the pin connected to the clock for your shift registers
+*/
 void buildAndWrite32Bit(int toTrans, int latchPin, int dataPin, int clockPin){
   unsigned long toRet = 0;
   int hundreds = int(toTrans/100);
@@ -140,6 +164,33 @@ void buildAndWrite32Bit(int toTrans, int latchPin, int dataPin, int clockPin){
   digitalWrite(latchPin, HIGH);
 }
 
+void writeNoData(int latchPin, int dataPin, int clockPin){
+  digitalWrite(latchPin,LOW);
+  shiftOut(dataPin, clockPin, MSBFIRST,noValue);
+  shiftOut(dataPin, clockPin, MSBFIRST,noValue);
+  shiftOut(dataPin, clockPin, MSBFIRST,noValue);
+  digitalWrite(latchPin, HIGH);
+}
+
+/**
+Checks if the switch connected to pinToCheck is closed or open
+Closed is true, Open is false
+*/
 boolean checkTempSet(int pinToCheck){
-  return true;
+  return digitalRead(pinToCheck);
+}
+
+/**
+Displays the temp given on the pins given
+*/
+void displayTemp(int minTemp, int maxTemp, int potPin,  int latch, int data, int clock){
+  if(potPin != -1){
+    int potValue = analogRead(potPin);
+    float percentage = potPin/float(MAX_POT_VALUE);
+    //Max temp - mintemp gives us a 0-X range, which we can multiply by the percentage to find the actual value when we re-add minTemp
+    int temp = ((maxTemp - minTemp) * percentage) + minTemp;
+    buildAndWrite32Bit(temp, latch, data, clock);
+  } else {
+    writeNoData(latch, data, clock);
+  }
 }
