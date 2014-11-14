@@ -10,9 +10,9 @@ int MASH_READ_DATA = 37;
 int BOIL_READ_CLOCK = 38;
 int BOIL_READ_DATA = 39;
 
-int MASH_POT = 40;
+int MASH_POT = A0;
 int MASH_ENABLE = 41;
-int BOIL_POT = 42;
+int BOIL_POT = A1;
 int BOIL_ENABLE = 43;
 
 int TEMP_ONE_WIRE = 44;
@@ -55,7 +55,7 @@ int BOIL_KETTLE_MINIMUM = 50;
 int BOIL_KETTLE_MAXIMUM = 212;
 
 //The byte value for --- on a 3 digit 7 segment display
-byte noValue = 64; //Just segment 6 1000000
+byte noValue = 128; //Just segment 6 10000000
 
 //Temperature of the mash tun
 int mashTemp;
@@ -93,6 +93,7 @@ void fillSegmentCounter(){
 void loop(){
   displayCurrentTemps();
   displaySetTemps();
+  delay(500);
 }
 
 //BEGIN FUNCTIONS
@@ -104,9 +105,9 @@ Reads the temperatures from the sensors and displays on the 7 segment displays
 */
 void displayCurrentTemps(){
    //read Mash temp
-  mashTemp = 100;
+  mashTemp = 150;
   //read boil temp
-  boilTemp = 100; 
+  boilTemp = 212; 
   buildAndWrite32Bit(mashTemp, TEMP_READ_LATCH, MASH_READ_DATA, MASH_READ_CLOCK);
   buildAndWrite32Bit(boilTemp, TEMP_READ_LATCH, BOIL_READ_DATA, BOIL_READ_CLOCK);
 }
@@ -148,15 +149,6 @@ void buildAndWrite32Bit(int toTrans, int latchPin, int dataPin, int clockPin){
   byte shiftT = segmentCounter[tens] << 1;
   byte shiftO = segmentCounter[ones] << 1;
 
-  Serial.print("I: ");
-  Serial.println(toTrans);
-  Serial.print("hundreds: ");
-  Serial.println(shiftH);
-  Serial.print("Tens: ");
-  Serial.println(shiftT);
-  Serial.print("Ones: ");
-  Serial.println(shiftO);
-
   digitalWrite(latchPin,LOW);
   shiftOut(dataPin, clockPin, MSBFIRST,shiftO);
   shiftOut(dataPin, clockPin, MSBFIRST,shiftT);
@@ -186,7 +178,11 @@ Displays the temp given on the pins given
 void displayTemp(int minTemp, int maxTemp, int potPin,  int latch, int data, int clock){
   if(potPin != -1){
     int potValue = analogRead(potPin);
-    float percentage = potPin/float(MAX_POT_VALUE);
+    Serial.print("POT ");
+    Serial.print(potPin);
+    Serial.print(" value: ");
+    Serial.println(potValue);
+    float percentage = potValue/float(MAX_POT_VALUE);
     //Max temp - mintemp gives us a 0-X range, which we can multiply by the percentage to find the actual value when we re-add minTemp
     int temp = ((maxTemp - minTemp) * percentage) + minTemp;
     buildAndWrite32Bit(temp, latch, data, clock);
