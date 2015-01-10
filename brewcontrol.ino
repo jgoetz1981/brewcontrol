@@ -21,7 +21,7 @@ int MASH_ENABLE = 41;
 int BOIL_POT = A1;
 int BOIL_ENABLE = 43;
 
-int TEMP_ONE_WIRE = 44;
+int TEMP_ONE_WIRE = 45;
 /**
 Sets the pin modes of the various pin constants to their appropriate
 value
@@ -148,6 +148,8 @@ void verifyTempSensors(){
    tempHelper.reset();
   byte devices[MAX_ONEWIRE_DEVICES][8];
   int deviceCount = findDevices(devices);
+  Serial.print("deviceCount: ");
+  Serial.println(deviceCount);
   for(int i = 0; i < deviceCount; i++){
     if(!hltTempEnabled && checkIfDeviceMatches(devices[i],HLT_TEMP_SENSOR)){
       hltTempEnabled = true;
@@ -173,8 +175,9 @@ int findDevices(byte devices[][8]){
   int finished = 1;
   int deviceCount = 0;
   for(int i = 0; finished == 1; i++){
+    Serial.println("Searching");
     finished = tempHelper.search(devices[i]);
-    if(deviceCount == 1){
+    if(finished == 1){
       deviceCount++;
     }
   }
@@ -191,9 +194,13 @@ void displayCurrentTemps(){
   readTemperatures();
   if(mashTempEnabled){
     buildAndWrite32Bit(mashTemp, TEMP_READ_LATCH, MASH_READ_DATA, MASH_READ_CLOCK);
+  } else {
+    displayTemp(-1, -1, -1, TEMP_READ_LATCH, MASH_READ_DATA, MASH_READ_CLOCK);
   }
   if(boilTempEnabled){
     buildAndWrite32Bit(boilTemp, TEMP_READ_LATCH, BOIL_READ_DATA, BOIL_READ_CLOCK);
+  } else {
+    displayTemp(-1, -1, -1, TEMP_READ_LATCH, BOIL_READ_DATA, BOIL_READ_CLOCK);
   }
 }
 
@@ -278,7 +285,7 @@ Reads the temperatures from the one wire devices
 void readTemperatures(){
   tempHelper.reset();
   tempHelper.write(0xCC);
-  tempHelper.write(0x44);
+  tempHelper.write(0x44,1);
   delay(TEMP_CONVERSION_DELAY);
   if(hltTempEnabled){
     readTemp(HLT_TEMP_SENSOR, &hltTemp);
@@ -294,18 +301,32 @@ void readTemperatures(){
 void readTemp(byte sensor[], int* tempVar){
   tempHelper.reset();
   tempHelper.select(sensor);
-  tempHelper.write(0xBE);
+  tempHelper.write(0xBE,1);
   byte data[12];
+  Serial.print("Reading sensor: ");
+  printDeviceId(sensor);
+  Serial.println();
   for(int i = 0; i < 9; i++){
     data[i] = tempHelper.read();
+    Serial.print(data[i], HEX);
+   Serial.print(" ");
   }
   byte MSB = data[1];
   byte LSB = data[0];
-  int tempRead = ((MSB << 8) | LSB);
+  float tempRead = ((MSB << 8) | LSB);
+  Serial.print("Got temp: ");
+  Serial.println(tempRead/16);
   *tempVar = covertCToF(tempRead/16);
 }
 
-int covertCToF(int C){
+int covertCToF(float C){
  return ((int)(C*1.8) + 32);
+}
+
+void printDeviceId(byte id[]){
+  for(int j = 0; j < 8; j++){
+   Serial.print(id[j], HEX); 
+   Serial.print(",");
+  }
 }
 
