@@ -148,8 +148,6 @@ void verifyTempSensors(){
    tempHelper.reset();
   byte devices[MAX_ONEWIRE_DEVICES][8];
   int deviceCount = findDevices(devices);
-  Serial.print("deviceCount: ");
-  Serial.println(deviceCount);
   for(int i = 0; i < deviceCount; i++){
     if(!hltTempEnabled && checkIfDeviceMatches(devices[i],HLT_TEMP_SENSOR)){
       hltTempEnabled = true;
@@ -303,19 +301,13 @@ void readTemp(byte sensor[], int* tempVar){
   tempHelper.select(sensor);
   tempHelper.write(0xBE,1);
   byte data[12];
-  Serial.print("Reading sensor: ");
   printDeviceId(sensor);
-  Serial.println();
   for(int i = 0; i < 9; i++){
     data[i] = tempHelper.read();
-    Serial.print(data[i], HEX);
-   Serial.print(" ");
   }
   byte MSB = data[1];
   byte LSB = data[0];
   float tempRead = ((MSB << 8) | LSB);
-  Serial.print("Got temp: ");
-  Serial.println(tempRead/16);
   *tempVar = covertCToF(tempRead/16);
 }
 
