@@ -1,3 +1,5 @@
+#include <PID_v1.h>
+
 #include <OneWire.h>
 
 //***PROGRAM CONSTANTS***
@@ -22,6 +24,8 @@ int BOIL_POT = A1;
 int BOIL_ENABLE = 43;
 
 int TEMP_ONE_WIRE = 45;
+
+int RIMS_ELEMENT = 46;
 /**
 Sets the pin modes of the various pin constants to their appropriate
 value
@@ -37,6 +41,7 @@ void initPinModes(){
   pinMode(MASH_READ_DATA, OUTPUT);
   pinMode(BOIL_READ_CLOCK, OUTPUT);
   pinMode(BOIL_READ_DATA, OUTPUT);
+  pinMode(RIMS_ELEMENT, OUTPUT);
   pinMode(MASH_POT, INPUT);
   pinMode(MASH_ENABLE, INPUT);
   pinMode(BOIL_POT, INPUT);
@@ -79,20 +84,37 @@ byte HLT_TEMP_SENSOR[8] = {0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0};
 //THe number of miliseconds to delay while converting temps
 int TEMP_CONVERSION_DELAY = 1000;
 
+//PID Constants
+double PID_KP = 2;
+double PID_KI = 1;
+double PID_KD = 3;
+
+double PID_MAX_WINDOW = 5000;
+
 /**************************
 ***END CONSTANTS***********
 **************************/
 //Temperature of the HLT
-int hltTemp;
+double hltTemp;
 //Temperature of the mash tun
-int mashTemp;
+double mashTemp;
 //Set temp for the mash tun
-int mashSetTemp;
+double mashSetTemp;
 
 //Temperature of the boil kettle
-int boilTemp;
+double boilTemp;
 //Set temp for the boil kettle
-int boilSetTemp;
+double boilSetTemp;
+
+//Inputs and outputs from the PID
+double pidInput;
+double pidOutput;
+
+double tempConversionStart;
+double windowStartTime;
+boolean readyForTempConversion = true;
+//PID class
+PID mashPID(&mashTemp, &pidOutput, &mashSetTemp, PID_KP, PID_KI, PID_KD, DIRECT);
 
 //Onewire heler class
 OneWire tempHelper(TEMP_ONE_WIRE);
@@ -111,13 +133,15 @@ void setup(){
  initPinModes();
  fillSegmentCounter();
  verifyTempSensors();
+ windowStartTime = millis();
+ mashPID.SetOutputLimits(0, PID_MAX_WINDOW);
 }
 
 //LOOP
 void loop(){
   displayCurrentTemps();
   displaySetTemps();
-  delay(500);
+  checkRIMSState();
 }
 
 //BEGIN FUNCTIONS
@@ -184,6 +208,23 @@ int findDevices(byte devices[][8]){
 
 
 //Functions from loop
+
+void checkRIMSState(){
+  if(checkTempSet(MASH_ENABLE)){
+    unsigned long now = millis();
+    mashPID.Compute();
+    if(now - windowStartTime > PID_MAX_WINDOW){
+     windowStartTime += PID_MAX_WINDOW; 
+    }
+    if(pidOutput > now - windowStartTime){
+      digitalWrite(RIMS_ELEMENT, HIGH);
+    } else {
+      digitalWrite(RIMS_ELEMENT, LOW);
+    }
+  } else {
+    digitalWrite(RIMS_ELEMENT, LOW);
+  }
+}
 
 /**
 Reads the temperatures from the sensors and displays on the 7 segment displays
@@ -281,22 +322,28 @@ void displayTemp(int minTemp, int maxTemp, int potPin,  int latch, int data, int
 Reads the temperatures from the one wire devices
 */
 void readTemperatures(){
-  tempHelper.reset();
-  tempHelper.write(0xCC);
-  tempHelper.write(0x44,1);
-  delay(TEMP_CONVERSION_DELAY);
-  if(hltTempEnabled){
-    readTemp(HLT_TEMP_SENSOR, &hltTemp);
-  }
-  if(mashTempEnabled){
-    readTemp(MASH_TEMP_SENSOR, &mashTemp);
-  }
-  if(boilTempEnabled){
-    readTemp(BOIL_TEMP_SENSOR, &boilTemp);
+  unsigned long now = millis();
+  if(readyForTempConversion){
+    tempHelper.reset();
+    tempHelper.write(0xCC);
+    tempHelper.write(0x44,1);
+    tempConversionStart = now;
+    readyForTempConversion = false;
+  } else if(now - tempConversionStart > TEMP_CONVERSION_DELAY){
+    if(hltTempEnabled){
+      readTemp(HLT_TEMP_SENSOR, &hltTemp);
+    }
+    if(mashTempEnabled){
+      readTemp(MASH_TEMP_SENSOR, &mashTemp);
+    }
+    if(boilTempEnabled){
+      readTemp(BOIL_TEMP_SENSOR, &boilTemp);
+    }
+    readyForTempConversion = true;
   }
 }
 
-void readTemp(byte sensor[], int* tempVar){
+void readTemp(byte sensor[], double* tempVar){
   tempHelper.reset();
   tempHelper.select(sensor);
   tempHelper.write(0xBE,1);
