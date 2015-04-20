@@ -62,7 +62,7 @@ int MAX_POT_VALUE = 1023;
 
 /*The minimum and maximum settable temperatures for the mash tun*/
 int MASH_TUN_MINIMUM = 60;
-int MASH_TUN_MAXIMUM = 170;
+int MASH_TUN_MAXIMUM = 180;
 
 /*The minimum and maximum settable temperatures for the boil kettle*/
 int BOIL_KETTLE_MINIMUM = 50;
@@ -135,6 +135,7 @@ void setup(){
  verifyTempSensors();
  windowStartTime = millis();
  mashPID.SetOutputLimits(0, PID_MAX_WINDOW);
+ mashPID.SetMode(AUTOMATIC);
 }
 
 //LOOP
@@ -142,6 +143,7 @@ void loop(){
   displayCurrentTemps();
   displaySetTemps();
   checkRIMSState();
+  delay(500);
 }
 
 //BEGIN FUNCTIONS
@@ -212,16 +214,32 @@ int findDevices(byte devices[][8]){
 void checkRIMSState(){
   if(checkTempSet(MASH_ENABLE)){
     unsigned long now = millis();
-    mashPID.Compute();
+    boolean computed = mashPID.Compute();
     if(now - windowStartTime > PID_MAX_WINDOW){
      windowStartTime += PID_MAX_WINDOW; 
     }
+    Serial.println("CHECKING MASH VALUES:");
+    Serial.print("Did anything happen? ");
+    Serial.println(computed);
+    Serial.print("Input: ");
+    Serial.println(mashTemp);
+    Serial.print("Target: ");
+    Serial.println(mashSetTemp);
+    Serial.print("Now: ");
+    Serial.println(now);
+    Serial.print("Window Start Time: ");
+    Serial.println(windowStartTime);
+    Serial.print("pidOutput:");
+    Serial.println(pidOutput);
     if(pidOutput > now - windowStartTime){
+      Serial.println("SENDING HIGH TO RIMS");
       digitalWrite(RIMS_ELEMENT, HIGH);
     } else {
+      Serial.println("SENDING LOW TO RIMS");
       digitalWrite(RIMS_ELEMENT, LOW);
     }
   } else {
+    Serial.println("RIMS OFF DUE TO MASH ENABLE");
     digitalWrite(RIMS_ELEMENT, LOW);
   }
 }
@@ -234,12 +252,12 @@ void displayCurrentTemps(){
   if(mashTempEnabled){
     buildAndWrite32Bit(mashTemp, TEMP_READ_LATCH, MASH_READ_DATA, MASH_READ_CLOCK);
   } else {
-    displayTemp(-1, -1, -1, TEMP_READ_LATCH, MASH_READ_DATA, MASH_READ_CLOCK);
+    displayTemp(-1, TEMP_READ_LATCH, MASH_READ_DATA, MASH_READ_CLOCK);
   }
   if(boilTempEnabled){
     buildAndWrite32Bit(boilTemp, TEMP_READ_LATCH, BOIL_READ_DATA, BOIL_READ_CLOCK);
   } else {
-    displayTemp(-1, -1, -1, TEMP_READ_LATCH, BOIL_READ_DATA, BOIL_READ_CLOCK);
+    displayTemp(-1, TEMP_READ_LATCH, BOIL_READ_DATA, BOIL_READ_CLOCK);
   }
 }
 
@@ -250,15 +268,17 @@ by the user
 void displaySetTemps(){
    //check mash temp enabled
   if(checkTempSet(MASH_ENABLE) == 1){
-    displayTemp(MASH_TUN_MINIMUM, MASH_TUN_MAXIMUM, MASH_POT, TEMP_SET_LATCH, MASH_SET_DATA, MASH_SET_CLOCK);
+    mashSetTemp = fetchTempFromPot(MASH_TUN_MINIMUM, MASH_TUN_MAXIMUM, MASH_POT);
+    displayTemp(mashSetTemp, TEMP_SET_LATCH, MASH_SET_DATA, MASH_SET_CLOCK);
   } else {
-    displayTemp(-1, -1, -1, TEMP_SET_LATCH, MASH_SET_DATA, MASH_SET_CLOCK);
+    displayTemp(-1, TEMP_SET_LATCH, MASH_SET_DATA, MASH_SET_CLOCK);
   }
   //Check boil temp enabled
   if(checkTempSet(BOIL_ENABLE) == 1){
-    displayTemp(BOIL_KETTLE_MINIMUM, BOIL_KETTLE_MAXIMUM, BOIL_POT, TEMP_SET_LATCH, BOIL_SET_DATA, BOIL_SET_CLOCK);
+    boilSetTemp = fetchTempFromPot(BOIL_KETTLE_MINIMUM, BOIL_KETTLE_MAXIMUM, BOIL_POT);
+    displayTemp(boilSetTemp, TEMP_SET_LATCH, BOIL_SET_DATA, BOIL_SET_CLOCK);
   } else {
-    displayTemp(-1, -1, -1, TEMP_SET_LATCH, BOIL_SET_DATA, BOIL_SET_CLOCK);
+    displayTemp(-1, TEMP_SET_LATCH, BOIL_SET_DATA, BOIL_SET_CLOCK);
   }
 }
 
@@ -303,15 +323,19 @@ boolean checkTempSet(int pinToCheck){
   return digitalRead(pinToCheck);
 }
 
-/**
-Displays the temp given on the pins given
-*/
-void displayTemp(int minTemp, int maxTemp, int potPin,  int latch, int data, int clock){
-  if(potPin != -1){
+double fetchTempFromPot(int minTemp, int maxTemp, int potPin){
     int potValue = analogRead(potPin);
     float percentage = potValue/float(MAX_POT_VALUE);
     //Max temp - mintemp gives us a 0-X range, which we can multiply by the percentage to find the actual value when we re-add minTemp
-    int temp = ((maxTemp - minTemp) * percentage) + minTemp;
+    double temp = ((maxTemp - minTemp) * percentage) + minTemp;
+    return temp;
+}
+
+/**
+Displays the temp given on the pins given
+*/
+void displayTemp(double temp,  int latch, int data, int clock){
+  if(temp != -1){
     buildAndWrite32Bit(temp, latch, data, clock);
   } else {
     writeNoData(latch, data, clock);
